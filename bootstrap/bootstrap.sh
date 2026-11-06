@@ -3,7 +3,7 @@ set -euo pipefail
 
 ACCOUNT=016370843728
 REGION=us-west-2
-SUB=repo:tesser-sh@319273144/customer-iac@1448597755
+SUB=repo:tesser-sh@319273144/pulumi-selfhost@1448597755
 BUCKET=tesser-customer-iac-state-$ACCOUNT
 KEY_ALIAS=alias/customer-iac-pulumi
 GITHUB=token.actions.githubusercontent.com
