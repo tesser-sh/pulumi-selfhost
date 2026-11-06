@@ -1,0 +1,8 @@
+name: tesser
+description: What a tesser self-host org deploys into its own AWS account.
+runtime:
+  name: nodejs
+  options:
+    packagemanager: pnpm
+backend:
+  url: s3://tesser-customer-iac-state-016370843728?region=us-west-2

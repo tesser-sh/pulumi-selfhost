@@ -1,0 +1,14 @@
+config:
+  aws:region: us-west-2
+  tesser:orgId: org_00000000c1ac
+  tesser:parameterStore: true
+  tesser:allowedAccountIds:
+    - '016370843728'
+  tesser:extraTags:
+    tesser:customer-iac: '1'
+  tesser:githubActions:
+    subjects:
+      - repo:tesser-sh@319273144/customer-iac@1448597755:ref:refs/heads/main
+    providerArn: arn:aws:iam::016370843728:oidc-provider/token.actions.githubusercontent.com
+secretsprovider: awskms://alias/customer-iac-pulumi?region=us-west-2
+encryptedkey: AQICAHhrpxG4S/dFyNzwPUz/068bwAgbXqhkrHRJJvJOaIBwVgFzfjhK9MdOSBqcnoUh9rysAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMJe3bOM1irFIxTIQ2AgEQgDvXq0pxvdpAOcWaKBZy3GwpGhHd8NXQ9cqM0q6SEem3SA8kA2aKnC0p+YqO5lXY/ykcRLrimydd+eSQEA==

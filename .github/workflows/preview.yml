@@ -1,0 +1,43 @@
+name: preview
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: pulumi preview tesser/dev
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.22.0
+          cache: pnpm
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::016370843728:role/customer-iac-preview
+          role-session-name: customer-iac-preview
+          aws-region: us-west-2
+      - run: pnpm install --frozen-lockfile
+      - uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
+        with:
+          pulumi-version: 3.197.0
+          command: preview
+          work-dir: .
+          stack-name: dev
+          cloud-url: s3://tesser-customer-iac-state-016370843728?region=us-west-2
+          diff: true
+          comment-on-pr: true
+          edit-pr-comment: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
