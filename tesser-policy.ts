@@ -53,7 +53,7 @@ export function permissionsPolicy(t: PermissionsTarget): PolicyDocument {
       {
         Sid: "Describe",
         Effect: "Allow",
-        Action: ["ec2:DescribeInstances", "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups", "ec2:DescribeRouteTables", "servicequotas:GetServiceQuota", "iam:GetOutboundWebIdentityFederationInfo"],
+        Action: ["ec2:DescribeInstances", "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups", "ec2:DescribeRouteTables", "ec2:DescribeVolumes", "ec2:DescribeVolumesModifications", "servicequotas:GetServiceQuota", "iam:GetOutboundWebIdentityFederationInfo"],
         Resource: "*",
       },
       {
@@ -87,13 +87,20 @@ export function permissionsPolicy(t: PermissionsTarget): PolicyDocument {
         Sid: "TagAtLaunch",
         Effect: "Allow",
         Action: "ec2:CreateTags",
-        Resource: ec2("instance/*"),
+        Resource: [ec2("instance/*"), ec2("volume/*")],
         Condition: { StringEquals: { "ec2:CreateAction": "RunInstances" } },
+      },
+      {
+        Sid: "RaiseOrgRootThroughput",
+        Effect: "Allow",
+        Action: "ec2:ModifyVolume",
+        Resource: ec2("volume/*"),
+        Condition: { StringEquals: { "aws:ResourceTag/tesser:org": t.orgId } },
       },
       {
         Sid: "ManageOrgInstances",
         Effect: "Allow",
-        Action: ["ec2:StartInstances", "ec2:StopInstances", "ec2:TerminateInstances"],
+        Action: ["ec2:StartInstances", "ec2:StopInstances", "ec2:RebootInstances", "ec2:TerminateInstances"],
         Resource: ec2("instance/*"),
         Condition: { StringEquals: { "aws:ResourceTag/tesser:org": t.orgId } },
       },
@@ -158,6 +165,68 @@ export function snapshotsBoxPolicy(t: { bucket: string; orgId: string; region: s
               Condition: { StringEquals: { "kms:ViaService": `s3.${t.region}.amazonaws.com` } },
             },
           ]),
+    ],
+  };
+}
+
+export function fleetControlPolicy(t: { region: string; accountId: string; orgId: string; hostRoleArn: string; imageOwner: string | null }): PolicyDocument {
+  const ec2 = (resource: string) => `arn:aws:ec2:${t.region}:${t.accountId}:${resource}`;
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Sid: "CreateLandingVolumes",
+        Effect: "Allow",
+        Action: "ec2:CreateVolume",
+        Resource: ec2("volume/*"),
+        Condition: { StringEquals: { "aws:RequestTag/tesser:org": t.orgId } },
+      },
+      {
+        Sid: "TagLandingVolumes",
+        Effect: "Allow",
+        Action: "ec2:CreateTags",
+        Resource: ec2("volume/*"),
+        Condition: { StringEquals: { "ec2:CreateAction": "CreateVolume" } },
+      },
+
+      {
+        Sid: "AttachMoveVolumes",
+        Effect: "Allow",
+        Action: ["ec2:AttachVolume", "ec2:DetachVolume", "ec2:DeleteVolume"],
+        Resource: ec2("volume/*"),
+        Condition: { StringEquals: { "aws:ResourceTag/tesser:org": t.orgId }, Null: { "aws:ResourceTag/tesser:move": "false" } },
+      },
+      {
+        Sid: "AttachToOrgInstances",
+        Effect: "Allow",
+        Action: ["ec2:AttachVolume", "ec2:DetachVolume"],
+        Resource: ec2("instance/*"),
+        Condition: { StringEquals: { "aws:ResourceTag/tesser:org": t.orgId } },
+      },
+      ...(t.imageOwner === null
+        ? []
+        : [{ Sid: "LaunchFleetHostImage", Effect: "Allow" as const, Action: "ec2:RunInstances", Resource: `arn:aws:ec2:${t.region}::image/*`, Condition: { StringEquals: { "ec2:Owner": t.imageOwner } } }]),
+      {
+        Sid: "PassFleetHostRole",
+        Effect: "Allow",
+        Action: "iam:PassRole",
+        Resource: t.hostRoleArn,
+        Condition: { StringEquals: { "iam:PassedToService": "ec2.amazonaws.com" } },
+      },
+    ],
+  };
+}
+
+export function fleetHostPolicy(t: { cellUrl: string; bucket: string; region: string; kmsKey: string | null }): PolicyDocument {
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      ...boxIdentityPolicy(t.cellUrl).Statement.map((s) => ({ ...s, Sid: "HostIdentity" })),
+      { Sid: "SleepingBoxes", Effect: "Allow", Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"], Resource: `arn:aws:s3:::${t.bucket}/vms/*` },
+      { Sid: "ListSleepingBoxes", Effect: "Allow", Action: "s3:ListBucket", Resource: `arn:aws:s3:::${t.bucket}`, Condition: { StringLike: { "s3:prefix": "vms/*" } } },
+      ...(t.kmsKey === null
+        ? []
+        : [{ Sid: "SleepingBoxesKey", Effect: "Allow" as const, Action: ["kms:GenerateDataKey", "kms:Decrypt"], Resource: t.kmsKey, Condition: { StringEquals: { "kms:ViaService": `s3.${t.region}.amazonaws.com` } } }]),
     ],
   };
 }

@@ -13,10 +13,13 @@ export function boxSsh(t: { region: string; accountId: pulumi.Input<string>; org
       Condition: { StringEquals: { 'ssm:resourceTag/tesser:org': t.orgId } },
     },
     {
-      Sid: 'SshDocument',
+      Sid: 'SshDocuments',
       Effect: 'Allow',
       Action: 'ssm:StartSession',
-      Resource: `arn:aws:ssm:${t.region}::document/AWS-StartSSHSession`,
+      Resource: [
+        `arn:aws:ssm:${t.region}::document/AWS-StartSSHSession`,
+        `arn:aws:ssm:${t.region}::document/AWS-StartPortForwardingSession`,
+      ],
     },
     {
       Sid: 'OpenOwnDataChannel',

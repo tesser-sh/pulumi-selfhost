@@ -5,6 +5,8 @@ import { boxSsh, oidcAccess, policyJson } from './access';
 import { createNetwork } from './network';
 import {
   boxIdentityPolicy,
+  fleetControlPolicy,
+  fleetHostPolicy,
   cloudBoxRoleName,
   cloudRoleName,
   parameterStorePolicies,
@@ -16,6 +18,9 @@ import {
 
 const ISSUER_HOST = 'api.tesser.sh';
 const MESH_PORT = 14650;
+const LAST_MOVE_PORT = 14655;
+const HOST_MESH_PORTS = { from: 22000, to: 23999 };
+const WG_PORT = 51820;
 const ZONES: Record<string, string> = { 'us-east-1': 'use1-az1', 'us-west-2': 'usw2-az1' };
 
 const cfg = new pulumi.Config();
@@ -57,8 +62,32 @@ new aws.vpc.SecurityGroupIngressRule(
     referencedSecurityGroupId: sg.id,
     ipProtocol: 'tcp',
     fromPort: MESH_PORT,
-    toPort: MESH_PORT,
-    description: 'box to box',
+    toPort: LAST_MOVE_PORT,
+    description: 'mesh, door and moves',
+  },
+  { provider }
+);
+new aws.vpc.SecurityGroupIngressRule(
+  'tesser-host-mesh',
+  {
+    securityGroupId: sg.id,
+    referencedSecurityGroupId: sg.id,
+    ipProtocol: 'tcp',
+    fromPort: HOST_MESH_PORTS.from,
+    toPort: HOST_MESH_PORTS.to,
+    description: 'fleet microvm mesh ports',
+  },
+  { provider }
+);
+new aws.vpc.SecurityGroupIngressRule(
+  'tesser-wireguard',
+  {
+    securityGroupId: sg.id,
+    referencedSecurityGroupId: sg.id,
+    ipProtocol: 'udp',
+    fromPort: WG_PORT,
+    toPort: WG_PORT,
+    description: 'fleet hosts',
   },
   { provider }
 );
@@ -168,6 +197,44 @@ new aws.iam.RolePolicy(
   { provider }
 );
 
+const hostRole = new aws.iam.Role(
+  'tesser-host',
+  {
+    name: `tesser-${orgId}-host`,
+    assumeRolePolicy: JSON.stringify({
+      Version: '2012-10-17',
+      Statement: [{ Effect: 'Allow', Principal: { Service: 'ec2.amazonaws.com' }, Action: 'sts:AssumeRole' }],
+    }),
+  },
+  { provider }
+);
+new aws.iam.RolePolicyAttachment(
+  'tesser-host-ssm',
+  { role: hostRole.name, policyArn: aws.iam.ManagedPolicy.AmazonSSMManagedInstanceCore },
+  { provider }
+);
+new aws.iam.RolePolicy(
+  'tesser-host',
+  {
+    role: hostRole.id,
+    policy: snapshots.bucket.apply((bucket) =>
+      JSON.stringify(fleetHostPolicy({ cellUrl: `https://${ISSUER_HOST}`, bucket, region, kmsKey: null }))
+    ),
+  },
+  { provider }
+);
+new aws.iam.InstanceProfile('tesser-host', { name: hostRole.name, role: hostRole.name }, { provider });
+new aws.iam.RolePolicy(
+  'tesser-fleet',
+  {
+    role: role.id,
+    policy: pulumi.all([accountId, hostRole.arn]).apply(([a, hostRoleArn]) =>
+      JSON.stringify(fleetControlPolicy({ region, accountId: a, orgId, hostRoleArn, imageOwner }))
+    ),
+  },
+  { provider }
+);
+
 if (parameterStore) {
   const env = accountId.apply((a) => parameterStorePolicies({ region, accountId: a, orgId }));
   new aws.iam.RolePolicy('tesser-env', { role: role.id, policy: env.apply((p) => JSON.stringify(p.control)) }, { provider });
@@ -205,5 +272,6 @@ export const securityGroupId = sg.id;
 export const instanceProfile = boxProfile.name;
 export const snapshotsBucket = snapshots.bucket;
 export const memberAccessPolicyArn = memberAccess.arn;
+export const hostRoleArn = hostRole.arn;
 export const accessRoleArns = { githubActions: githubActionsRoleArn, cloudAgent: cloudAgentRoleArn };
-export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket}${parameterStore ? ' --env parameter-store' : ''}`;
+export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn}${parameterStore ? ' --env parameter-store' : ''}`;
