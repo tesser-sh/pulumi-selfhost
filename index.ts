@@ -6,6 +6,7 @@ import { createNetwork } from './network';
 import {
   boxIdentityPolicy,
   fleetControlPolicy,
+  fleetBoxTrustPolicy,
   fleetHostPolicy,
   cloudBoxRoleName,
   cloudRoleName,
@@ -130,15 +131,23 @@ const oidc = new aws.iam.OpenIdConnectProvider(
   { provider, aliases: [{ name: 'tesser-oidc' }] }
 );
 
+const hostRole = new aws.iam.Role(
+  'tesser-host',
+  {
+    name: 'tesser-fleet-host',
+    assumeRolePolicy: JSON.stringify({
+      Version: '2012-10-17',
+      Statement: [{ Effect: 'Allow', Principal: { Service: 'ec2.amazonaws.com' }, Action: 'sts:AssumeRole' }],
+    }),
+  },
+  { provider }
+);
 const boxRoleName = cloudBoxRoleName(orgId);
 const boxRole = new aws.iam.Role(
   'tesser-box',
   {
     name: boxRoleName,
-    assumeRolePolicy: JSON.stringify({
-      Version: '2012-10-17',
-      Statement: [{ Effect: 'Allow', Principal: { Service: 'ec2.amazonaws.com' }, Action: 'sts:AssumeRole' }],
-    }),
+    assumeRolePolicy: hostRole.arn.apply((arn) => JSON.stringify(fleetBoxTrustPolicy(arn))),
   },
   { provider }
 );
@@ -197,17 +206,6 @@ new aws.iam.RolePolicy(
   { provider }
 );
 
-const hostRole = new aws.iam.Role(
-  'tesser-host',
-  {
-    name: `tesser-${orgId}-host`,
-    assumeRolePolicy: JSON.stringify({
-      Version: '2012-10-17',
-      Statement: [{ Effect: 'Allow', Principal: { Service: 'ec2.amazonaws.com' }, Action: 'sts:AssumeRole' }],
-    }),
-  },
-  { provider }
-);
 new aws.iam.RolePolicyAttachment(
   'tesser-host-ssm',
   { role: hostRole.name, policyArn: aws.iam.ManagedPolicy.AmazonSSMManagedInstanceCore },
@@ -217,8 +215,8 @@ new aws.iam.RolePolicy(
   'tesser-host',
   {
     role: hostRole.id,
-    policy: snapshots.bucket.apply((bucket) =>
-      JSON.stringify(fleetHostPolicy({ cellUrl: `https://${ISSUER_HOST}`, bucket, region, kmsKey: null }))
+    policy: pulumi.all([snapshots.bucket, accountId]).apply(([bucket, a]) =>
+      JSON.stringify(fleetHostPolicy({ cellUrl: `https://${ISSUER_HOST}`, bucket, region, kmsKey: null, accountId: a, boxRole: boxRoleName }))
     ),
   },
   { provider }
@@ -274,4 +272,4 @@ export const snapshotsBucket = snapshots.bucket;
 export const memberAccessPolicyArn = memberAccess.arn;
 export const hostRoleArn = hostRole.arn;
 export const accessRoleArns = { githubActions: githubActionsRoleArn, cloudAgent: cloudAgentRoleArn };
-export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn}${parameterStore ? ' --env parameter-store' : ''}`;
+export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''}`;
