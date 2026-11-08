@@ -217,16 +217,32 @@ export function fleetControlPolicy(t: { region: string; accountId: string; orgId
   };
 }
 
-export function fleetHostPolicy(t: { cellUrl: string; bucket: string; region: string; kmsKey: string | null }): PolicyDocument {
+export function fleetHostPolicy(t: { cellUrl: string; bucket: string; region: string; kmsKey: string | null; accountId: string; orgId: string }): PolicyDocument {
   return {
     Version: "2012-10-17",
     Statement: [
       ...boxIdentityPolicy(t.cellUrl).Statement.map((s) => ({ ...s, Sid: "HostIdentity" })),
+      { Sid: "BoxRole", Effect: "Allow", Action: "sts:AssumeRole", Resource: `arn:aws:iam::${t.accountId}:role/${cloudBoxRoleName(t.orgId)}` },
       { Sid: "SleepingBoxes", Effect: "Allow", Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"], Resource: `arn:aws:s3:::${t.bucket}/vms/*` },
       { Sid: "ListSleepingBoxes", Effect: "Allow", Action: "s3:ListBucket", Resource: `arn:aws:s3:::${t.bucket}`, Condition: { StringLike: { "s3:prefix": "vms/*" } } },
       ...(t.kmsKey === null
         ? []
         : [{ Sid: "SleepingBoxesKey", Effect: "Allow" as const, Action: ["kms:GenerateDataKey", "kms:Decrypt"], Resource: t.kmsKey, Condition: { StringEquals: { "kms:ViaService": `s3.${t.region}.amazonaws.com` } } }]),
+    ],
+  };
+}
+
+export interface RoleTrustDocument {
+  Version: "2012-10-17";
+  Statement: { Sid: string; Effect: "Allow"; Principal: { Service: string } | { AWS: string }; Action: "sts:AssumeRole" }[];
+}
+
+export function fleetBoxTrustPolicy(hostRoleArn: string): RoleTrustDocument {
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      { Sid: "Boxes", Effect: "Allow", Principal: { Service: "ec2.amazonaws.com" }, Action: "sts:AssumeRole" },
+      { Sid: "FleetHosts", Effect: "Allow", Principal: { AWS: hostRoleArn }, Action: "sts:AssumeRole" },
     ],
   };
 }
