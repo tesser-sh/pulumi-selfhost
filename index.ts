@@ -5,6 +5,7 @@ import { boxSsh, oidcAccess, policyJson } from './access';
 import { createNetwork } from './network';
 import {
   boxIdentityPolicy,
+  boxReachPolicy,
   fleetControlPolicy,
   fleetBoxTrustPolicy,
   fleetHostPolicy,
@@ -159,6 +160,11 @@ new aws.iam.RolePolicyAttachment(
 new aws.iam.RolePolicy(
   'tesser-box-identity',
   { role: boxRole.id, policy: JSON.stringify(boxIdentityPolicy(`https://${ISSUER_HOST}`)) },
+  { provider }
+);
+new aws.iam.RolePolicy(
+  'tesser-box-reach',
+  { role: boxRole.id, policy: accountId.apply((a) => JSON.stringify(boxReachPolicy({ accountId: a, orgId }))) },
   { provider }
 );
 new aws.iam.RolePolicy(

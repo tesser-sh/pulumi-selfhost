@@ -142,6 +142,34 @@ export function boxIdentityPolicy(cellUrl: string): PolicyDocument {
   };
 }
 
+export function boxReachPolicy(t: { accountId: string; orgId: string }): PolicyDocument {
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Sid: "ReachOrgBoxes",
+        Effect: "Allow",
+        Action: "ssm:StartSession",
+        Resource: `arn:aws:ec2:*:${t.accountId}:instance/*`,
+        Condition: { StringEquals: { "ssm:resourceTag/tesser:org": t.orgId }, BoolIfExists: { "ssm:SessionDocumentAccessCheck": "true" } },
+      },
+      {
+        Sid: "ReachOrgBoxesBySshTunnel",
+        Effect: "Allow",
+        Action: "ssm:StartSession",
+        Resource: ["arn:aws:ssm:*::document/AWS-StartSSHSession", "arn:aws:ssm:*::document/AWS-StartPortForwardingSession"],
+      },
+      {
+        Sid: "ManageOwnSessions",
+        Effect: "Allow",
+        Action: ["ssm:TerminateSession", "ssm:ResumeSession"],
+        Resource: "*",
+        Condition: { StringLike: { "ssm:resourceTag/aws:ssmmessages:session-id": "${aws:userid}*" } },
+      },
+    ],
+  };
+}
+
 export function parameterStorePolicies(t: { region: string; accountId: string; orgId: string }): { control: PolicyDocument; box: PolicyDocument } {
   const resource = `arn:aws:ssm:${t.region}:${t.accountId}:parameter/tesser/${t.orgId}/*`;
   const doc = (sid: string, actions: string[]): PolicyDocument => ({ Version: "2012-10-17", Statement: [{ Sid: sid, Effect: "Allow", Action: actions, Resource: resource }] });
