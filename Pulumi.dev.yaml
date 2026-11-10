@@ -1,6 +1,6 @@
 config:
   aws:region: us-west-2
-  tesser:orgId: org_00000000c1ac
+  tesser:orgId: org_b4e0cd03ff75
   tesser:parameterStore: true
   tesser:allowedAccountIds:
     - '016370843728'
