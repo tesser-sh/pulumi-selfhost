@@ -11,4 +11,4 @@ pulumi config set tesser:orgId <org id> && pulumi config set aws:region <region>
 
 ## Testing ground
 
-Deploys to `rohan-admin-devacc` (016370843728, us-west-2) as placeholder org `org_00000000c1ac`. PRs get a `pulumi preview --diff` comment, main runs `pulumi up`. State and KMS are in that account (`bootstrap/bootstrap.sh`), no Pulumi Cloud.
+Deploys to `rohan-admin-devacc` (016370843728, us-west-2) as the selfhost staging org `org_b4e0cd03ff75`. PRs get a `pulumi preview --diff` comment, main runs `pulumi up`. State and KMS are in that account (`bootstrap/bootstrap.sh`), no Pulumi Cloud.
