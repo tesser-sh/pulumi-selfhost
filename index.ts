@@ -119,6 +119,14 @@ new aws.s3.BucketServerSideEncryptionConfiguration(
   { bucket: snapshots.id, rules: [{ applyServerSideEncryptionByDefault: { sseAlgorithm: 'AES256' } }] },
   { provider }
 );
+new aws.s3.BucketLifecycleConfiguration(
+  'tesser-snapshots',
+  {
+    bucket: snapshots.id,
+    rules: [{ id: 'abort-uploads', status: 'Enabled', filter: { prefix: '' }, abortIncompleteMultipartUpload: { daysAfterInitiation: 1 } }],
+  },
+  { provider }
+);
 new aws.s3.BucketPolicy(
   'tesser-snapshots',
   { bucket: snapshots.id, policy: snapshots.bucket.apply((b) => JSON.stringify(snapshotsBucketPolicy(b))) },
