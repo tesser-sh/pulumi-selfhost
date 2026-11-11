@@ -14,6 +14,7 @@ import {
   permissionsPolicy,
   snapshotsBoxPolicy,
   snapshotsBucketPolicy,
+  snapshotsControlPolicy,
   trustPolicy,
 } from './tesser-policy';
 
@@ -211,6 +212,12 @@ new aws.iam.RolePolicy(
       )
     ),
   },
+  { provider }
+);
+
+new aws.iam.RolePolicy(
+  'tesser-snapshots',
+  { role: role.id, policy: snapshots.bucket.apply((bucket) => JSON.stringify(snapshotsControlPolicy({ bucket, orgId }))) },
   { provider }
 );
 
