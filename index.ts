@@ -14,6 +14,8 @@ import {
   permissionsPolicy,
   snapshotsBoxPolicy,
   snapshotsBucketPolicy,
+  snapshotsControlPolicy,
+  SNAPSHOTS_NONCURRENT_DAYS,
   trustPolicy,
 } from './tesser-policy';
 
@@ -119,13 +121,27 @@ new aws.s3.BucketServerSideEncryptionConfiguration(
   { bucket: snapshots.id, rules: [{ applyServerSideEncryptionByDefault: { sseAlgorithm: 'AES256' } }] },
   { provider }
 );
+const versioning = new aws.s3.BucketVersioning(
+  'tesser-snapshots',
+  { bucket: snapshots.id, versioningConfiguration: { status: 'Enabled' } },
+  { provider }
+);
 new aws.s3.BucketLifecycleConfiguration(
   'tesser-snapshots',
   {
     bucket: snapshots.id,
-    rules: [{ id: 'abort-uploads', status: 'Enabled', filter: { prefix: '' }, abortIncompleteMultipartUpload: { daysAfterInitiation: 1 } }],
+    rules: [
+      { id: 'abort-uploads', status: 'Enabled', filter: { prefix: '' }, abortIncompleteMultipartUpload: { daysAfterInitiation: 1 } },
+      {
+        id: 'expire-noncurrent',
+        status: 'Enabled',
+        filter: { prefix: '' },
+        noncurrentVersionExpiration: { noncurrentDays: SNAPSHOTS_NONCURRENT_DAYS },
+        expiration: { expiredObjectDeleteMarker: true },
+      },
+    ],
   },
-  { provider }
+  { provider, dependsOn: [versioning] }
 );
 new aws.s3.BucketPolicy(
   'tesser-snapshots',
@@ -211,6 +227,12 @@ new aws.iam.RolePolicy(
       )
     ),
   },
+  { provider }
+);
+
+new aws.iam.RolePolicy(
+  'tesser-snapshots',
+  { role: role.id, policy: snapshots.bucket.apply((bucket) => JSON.stringify(snapshotsControlPolicy({ bucket, orgId }))) },
   { provider }
 );
 
