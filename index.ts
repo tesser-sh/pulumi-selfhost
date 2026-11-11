@@ -232,7 +232,7 @@ new aws.iam.RolePolicy(
 
 new aws.iam.RolePolicy(
   'tesser-snapshots',
-  { role: role.id, policy: snapshots.bucket.apply((bucket) => JSON.stringify(snapshotsControlPolicy({ bucket, orgId }))) },
+  { role: role.id, policy: snapshots.bucket.apply((bucket) => JSON.stringify(snapshotsControlPolicy({ bucket }))) },
   { provider }
 );
 
