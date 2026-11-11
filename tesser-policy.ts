@@ -169,21 +169,6 @@ export function snapshotsBoxPolicy(t: { bucket: string; orgId: string; region: s
   };
 }
 
-export function snapshotsControlPolicy(t: { bucket: string; orgId: string }): PolicyDocument {
-  const bucket = `arn:aws:s3:::${t.bucket}`;
-  const prefixes = [`${t.orgId}/*`, "vms/*"];
-  return {
-    Version: "2012-10-17",
-    Statement: [
-      { Sid: "ListOrgObjects", Effect: "Allow", Action: "s3:ListBucket", Resource: bucket, Condition: { StringLike: { "s3:prefix": prefixes } } },
-      { Sid: "DeleteOrgObjects", Effect: "Allow", Action: "s3:DeleteObject", Resource: prefixes.map((p) => `${bucket}/${p}`) },
-      { Sid: "ReadBucketRecovery", Effect: "Allow", Action: ["s3:GetBucketVersioning", "s3:GetLifecycleConfiguration"], Resource: bucket },
-    ],
-  };
-}
-
-export const SNAPSHOTS_NONCURRENT_DAYS = 2;
-
 export function fleetControlPolicy(t: { region: string; accountId: string; orgId: string; hostRoleArn: string; imageOwner: string | null }): PolicyDocument {
   const ec2 = (resource: string) => `arn:aws:ec2:${t.region}:${t.accountId}:${resource}`;
   return {
