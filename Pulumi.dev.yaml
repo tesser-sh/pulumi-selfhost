@@ -2,6 +2,8 @@ config:
   aws:region: us-west-2
   tesser:orgId: org_b4e0cd03ff75
   tesser:parameterStore: true
+  tesser:tagKeys:
+    - staging
   tesser:allowedAccountIds:
     - '016370843728'
   tesser:extraTags:

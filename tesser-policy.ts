@@ -8,6 +8,14 @@ export function cloudBoxRoleName(orgId: string): string {
 
 export const RETAGGED_KEYS = ["tesser:org", "tesser:pool", "tesser:class", "tesser:service", "tesser:sha"];
 
+export const MOVE_TAG = "tesser:move";
+
+export const LAUNCH_TAG_KEYS = ["Name", "tesser:managed", "tesser:org", "tesser:boxId", "tesser:pool", "tesser:class", "tesser:service", "tesser:sha", "tesser:size", "tesser:fleet-host"];
+
+export const MOVE_VOLUME_TAG_KEYS = ["tesser:managed", "tesser:org", "tesser:boxId", MOVE_TAG];
+
+const isCustomerTagKey = (key: string) => !/^(tesser|aws):/i.test(key) && key !== "Name";
+
 type Statement = { Sid: string; Effect: "Allow"; Action: string | string[]; Resource: string | string[]; Condition?: Record<string, Record<string, string | string[]>> };
 export interface PolicyDocument {
   Version: "2012-10-17";
@@ -40,6 +48,7 @@ export interface PermissionsTarget {
   orgId: string;
   boxRole: string;
   image: { id: string } | { owner: string };
+  tagKeys: string[];
   subnetId?: string;
   securityGroupId?: string;
 }
@@ -47,6 +56,7 @@ export interface PermissionsTarget {
 export function permissionsPolicy(t: PermissionsTarget): PolicyDocument {
   if ("owner" in t.image && !/^\d{12}$/.test(t.image.owner)) throw new Error(`tesser's image owner must be a 12-digit AWS account id, not "${t.image.owner}"`);
   const ec2 = (resource: string) => `arn:aws:ec2:${t.region}:${t.accountId}:${resource}`;
+  const launchTags = { StringEquals: { "aws:RequestTag/tesser:org": t.orgId }, "ForAllValues:StringEquals": { "aws:TagKeys": [...LAUNCH_TAG_KEYS, ...t.tagKeys.filter(isCustomerTagKey)] } };
   return {
     Version: "2012-10-17",
     Statement: [
@@ -61,7 +71,14 @@ export function permissionsPolicy(t: PermissionsTarget): PolicyDocument {
         Effect: "Allow",
         Action: "ec2:RunInstances",
         Resource: ec2("instance/*"),
-        Condition: { StringEquals: { "aws:RequestTag/tesser:org": t.orgId } },
+        Condition: launchTags,
+      },
+      {
+        Sid: "LaunchOrgVolumes",
+        Effect: "Allow",
+        Action: "ec2:RunInstances",
+        Resource: ec2("volume/*"),
+        Condition: launchTags,
       },
       "id" in t.image
         ? { Sid: "LaunchImage", Effect: "Allow", Action: "ec2:RunInstances", Resource: `arn:aws:ec2:${t.region}::image/${t.image.id}` }
@@ -80,7 +97,6 @@ export function permissionsPolicy(t: PermissionsTarget): PolicyDocument {
           ec2(`subnet/${t.subnetId ?? "*"}`),
           ec2(`security-group/${t.securityGroupId ?? "*"}`),
           ec2("network-interface/*"),
-          ec2("volume/*"),
         ],
       },
       {
@@ -109,7 +125,11 @@ export function permissionsPolicy(t: PermissionsTarget): PolicyDocument {
         Effect: "Allow",
         Action: "ec2:CreateTags",
         Resource: ec2("instance/*"),
-        Condition: { StringEquals: { "aws:ResourceTag/tesser:org": t.orgId }, "ForAllValues:StringEquals": { "aws:TagKeys": RETAGGED_KEYS } },
+        Condition: {
+          StringEquals: { "aws:ResourceTag/tesser:org": t.orgId },
+          StringEqualsIfExists: { "aws:RequestTag/tesser:org": t.orgId },
+          "ForAllValues:StringEquals": { "aws:TagKeys": RETAGGED_KEYS },
+        },
       },
       {
         Sid: "PassBoxRole",
@@ -169,13 +189,13 @@ export function snapshotsBoxPolicy(t: { bucket: string; orgId: string; region: s
   };
 }
 
-export function snapshotsControlPolicy(t: { bucket: string }): PolicyDocument {
+export function snapshotsControlPolicy(t: { bucket: string; orgId: string }): PolicyDocument {
   const bucket = `arn:aws:s3:::${t.bucket}`;
   return {
     Version: "2012-10-17",
     Statement: [
       { Sid: "ListBucket", Effect: "Allow", Action: "s3:ListBucket", Resource: bucket },
-      { Sid: "DeleteObjects", Effect: "Allow", Action: "s3:DeleteObject", Resource: `${bucket}/*` },
+      { Sid: "DeleteOrgChunks", Effect: "Allow", Action: "s3:DeleteObject", Resource: `${bucket}/${t.orgId}/c/*` },
       { Sid: "ReadBucketRecovery", Effect: "Allow", Action: ["s3:GetBucketVersioning", "s3:GetLifecycleConfiguration"], Resource: bucket },
     ],
   };
@@ -193,7 +213,7 @@ export function fleetControlPolicy(t: { region: string; accountId: string; orgId
         Effect: "Allow",
         Action: "ec2:CreateVolume",
         Resource: ec2("volume/*"),
-        Condition: { StringEquals: { "aws:RequestTag/tesser:org": t.orgId } },
+        Condition: { StringEquals: { "aws:RequestTag/tesser:org": t.orgId }, "ForAllValues:StringEquals": { "aws:TagKeys": MOVE_VOLUME_TAG_KEYS } },
       },
       {
         Sid: "TagLandingVolumes",

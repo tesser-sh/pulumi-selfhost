@@ -30,6 +30,7 @@ const cfg = new pulumi.Config();
 const orgId = cfg.require('orgId');
 const imageOwner = cfg.get('imageOwner') ?? '131798513069';
 const parameterStore = cfg.getBoolean('parameterStore') ?? false;
+const tagKeys = cfg.getObject<string[]>('tagKeys') ?? [];
 const region = aws.config.requireRegion();
 
 const provider = new aws.Provider(
@@ -221,6 +222,7 @@ new aws.iam.RolePolicy(
           orgId,
           boxRole: boxRoleName,
           image: { owner: imageOwner },
+          tagKeys,
           subnetId,
           securityGroupId: group,
         })
@@ -232,7 +234,7 @@ new aws.iam.RolePolicy(
 
 new aws.iam.RolePolicy(
   'tesser-snapshots',
-  { role: role.id, policy: snapshots.bucket.apply((bucket) => JSON.stringify(snapshotsControlPolicy({ bucket }))) },
+  { role: role.id, policy: snapshots.bucket.apply((bucket) => JSON.stringify(snapshotsControlPolicy({ bucket, orgId }))) },
   { provider }
 );
 
