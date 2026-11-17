@@ -294,6 +294,11 @@ const githubActionsRoleArn =
 const agent = cfg.getObject<{ issuerUrl: string; audience: string; subjectLike: string[] }>('cloudAgent');
 const cloudAgentRoleArn = agent && oidcAccess('cloud-agent', agent, { provider, statements: ssh });
 
+const cursorTeamId = cfg.get('cursorTeamId');
+const cursorRoleArn =
+  cursorTeamId &&
+  oidcAccess('cursor', { issuerUrl: 'https://api.cursor.com', audience: 'sts.amazonaws.com', subjects: [`team_id:${cursorTeamId}`] }, { provider, statements: ssh });
+
 export const roleArn = role.arn;
 export const subnetId = subnet;
 export const securityGroupId = sg.id;
@@ -301,5 +306,5 @@ export const instanceProfile = boxProfile.name;
 export const snapshotsBucket = snapshots.bucket;
 export const memberAccessPolicyArn = memberAccess.arn;
 export const hostRoleArn = hostRole.arn;
-export const accessRoleArns = { githubActions: githubActionsRoleArn, cloudAgent: cloudAgentRoleArn };
+export const accessRoleArns = { githubActions: githubActionsRoleArn, cloudAgent: cloudAgentRoleArn, cursor: cursorRoleArn };
 export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''}`;
