@@ -1,6 +1,7 @@
 config:
   aws:region: us-west-2
   tesser:orgId: org_b4e0cd03ff75
+  tesser:actuatorImage: public.ecr.aws/tesser/actuator@sha256:ee5095bf907eb3c267d2fe3de26c2ddd387303f83aded1b0375e5d636d5e00b6
   tesser:parameterStore: true
   tesser:tagKeys:
     - staging
