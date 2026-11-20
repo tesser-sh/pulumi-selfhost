@@ -2,7 +2,6 @@ import * as aws from '@pulumi/aws';
 import * as pulumi from '@pulumi/pulumi';
 
 import { boxSsh, oidcAccess, policyJson } from './access';
-import { createActuator } from './actuator';
 import { createNetwork } from './network';
 import {
   boxIdentityPolicy,
@@ -21,6 +20,7 @@ import {
 } from './tesser-policy';
 
 const ISSUER_HOST = 'api.tesser.sh';
+const ACTUATOR_IMAGE = 'public.ecr.aws/tesser/actuator@sha256:ee5095bf907eb3c267d2fe3de26c2ddd387303f83aded1b0375e5d636d5e00b6';
 const MESH_PORT = 14650;
 const LAST_MOVE_PORT = 14655;
 const HOST_MESH_PORTS = { from: 22000, to: 23999 };
@@ -211,11 +211,7 @@ const role = new aws.iam.Role(
   },
   { provider, dependsOn: [oidc] }
 );
-new aws.iam.RolePolicy(
-  'tesser-boxes',
-  {
-    role: role.id,
-    policy: pulumi.all([accountId, subnet, sg.id]).apply(([a, subnetId, group]) =>
+const boxesPolicy = pulumi.all([accountId, subnet, sg.id]).apply(([a, subnetId, group]) =>
       JSON.stringify(
         permissionsPolicy({
           region,
@@ -228,16 +224,11 @@ new aws.iam.RolePolicy(
           securityGroupId: group,
         })
       )
-    ),
-  },
-  { provider }
-);
+    );
+new aws.iam.RolePolicy('tesser-boxes', { role: role.id, policy: boxesPolicy }, { provider });
 
-new aws.iam.RolePolicy(
-  'tesser-snapshots',
-  { role: role.id, policy: snapshots.bucket.apply((bucket) => JSON.stringify(snapshotsControlPolicy({ bucket, orgId }))) },
-  { provider }
-);
+const snapshotsPolicy = snapshots.bucket.apply((bucket) => JSON.stringify(snapshotsControlPolicy({ bucket, orgId })));
+new aws.iam.RolePolicy('tesser-snapshots', { role: role.id, policy: snapshotsPolicy }, { provider });
 
 new aws.iam.RolePolicyAttachment(
   'tesser-host-ssm',
@@ -255,13 +246,55 @@ new aws.iam.RolePolicy(
   { provider }
 );
 const hostProfile = new aws.iam.InstanceProfile('tesser-host', { name: hostRole.name, role: hostRole.name }, { provider });
-new aws.iam.RolePolicy(
-  'tesser-fleet',
-  {
-    role: role.id,
-    policy: pulumi.all([accountId, hostRole.arn]).apply(([a, hostRoleArn]) =>
+const fleetPolicy = pulumi.all([accountId, hostRole.arn]).apply(([a, hostRoleArn]) =>
       JSON.stringify(fleetControlPolicy({ region, accountId: a, orgId, hostRoleArn, imageOwner }))
+    );
+new aws.iam.RolePolicy('tesser-fleet', { role: role.id, policy: fleetPolicy }, { provider });
+
+const actuatorRole = new aws.iam.Role(
+  'tesser-actuator',
+  {
+    name: 'tesser-actuator',
+    assumeRolePolicy: accountId.apply((a) =>
+      JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: { Service: 'ecs-tasks.amazonaws.com' },
+            Action: 'sts:AssumeRole',
+            Condition: { StringEquals: { 'aws:SourceAccount': a }, ArnLike: { 'aws:SourceArn': `arn:aws:ecs:${region}:${a}:*` } },
+          },
+        ],
+      })
     ),
+  },
+  { provider }
+);
+new aws.iam.RolePolicy('tesser-actuator-boxes', { role: actuatorRole.id, policy: boxesPolicy }, { provider });
+new aws.iam.RolePolicy('tesser-actuator-snapshots', { role: actuatorRole.id, policy: snapshotsPolicy }, { provider });
+new aws.iam.RolePolicy('tesser-actuator-fleet', { role: actuatorRole.id, policy: fleetPolicy }, { provider });
+const actuatorLog = new aws.cloudwatch.LogGroup('tesser-actuator', { name: '/tesser/actuator', retentionInDays: 365 }, { provider });
+new aws.iam.RolePolicy(
+  'tesser-actuator-identity',
+  {
+    role: actuatorRole.id,
+    policy: pulumi.jsonStringify({
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Effect: 'Allow',
+          Action: 'sts:GetWebIdentityToken',
+          Resource: '*',
+          Condition: {
+            'ForAllValues:StringEquals': { 'sts:IdentityTokenAudience': `https://${ISSUER_HOST}` },
+            NumericLessThanEquals: { 'sts:DurationSeconds': '300' },
+            StringEquals: { 'sts:SigningAlgorithm': 'RS256' },
+          },
+        },
+        { Effect: 'Deny', Action: 'logs:*', Resource: [actuatorLog.arn, pulumi.interpolate`${actuatorLog.arn}:*`] },
+      ],
+    }),
   },
   { provider }
 );
@@ -269,27 +302,100 @@ new aws.iam.RolePolicy(
 if (parameterStore) {
   const env = accountId.apply((a) => parameterStorePolicies({ region, accountId: a, orgId }));
   new aws.iam.RolePolicy('tesser-env', { role: role.id, policy: env.apply((p) => JSON.stringify(p.control)) }, { provider });
+  new aws.iam.RolePolicy('tesser-actuator-env', { role: actuatorRole.id, policy: env.apply((p) => JSON.stringify(p.control)) }, { provider });
   new aws.iam.RolePolicy('tesser-box-env', { role: boxRole.id, policy: env.apply((p) => JSON.stringify(p.box)) }, { provider });
 }
 
-const actuator = createActuator(
+const actuatorExec = new aws.iam.Role(
+  'tesser-actuator-exec',
+  { name: 'tesser-actuator-exec', assumeRolePolicy: actuatorRole.assumeRolePolicy },
+  { provider }
+);
+new aws.iam.RolePolicy(
+  'tesser-actuator-exec',
+  {
+    role: actuatorExec.id,
+    policy: pulumi.jsonStringify({
+      Version: '2012-10-17',
+      Statement: [{ Effect: 'Allow', Action: ['logs:CreateLogStream', 'logs:PutLogEvents'], Resource: pulumi.interpolate`${actuatorLog.arn}:log-stream:*` }],
+    }),
+  },
+  { provider }
+);
+const actuatorSg = new aws.ec2.SecurityGroup(
+  'tesser-actuator',
+  { vpcId, description: 'tesser actuator: no inbound, https out', tags: { Name: 'tesser-actuator', 'tesser:org': orgId } },
+  { provider }
+);
+new aws.vpc.SecurityGroupEgressRule(
+  'tesser-actuator-https',
+  { securityGroupId: actuatorSg.id, ipProtocol: 'tcp', fromPort: 443, toPort: 443, cidrIpv4: '0.0.0.0/0' },
+  { provider }
+);
+const actuatorConfig = pulumi.jsonStringify({
+  kind: 'selfHost',
+  cellUrl: `https://${ISSUER_HOST}`,
+  orgId,
+  accountId,
+  region,
+  vpcId,
+  subnetIds: [subnet],
+  securityGroupId: sg.id,
+  box: { image: { owner: imageOwner }, instanceProfile: boxRoleName },
+  fleet: { image: { owner: imageOwner }, instanceProfileArn: hostProfile.arn },
+  snapshots: { bucket: snapshots.bucket },
+  parameterStore,
+  tags: {},
+  limits: { maxInstances: 50, mutationsPerMinute: 300, launchesPerHour: 120 },
+});
+const actuatorTask = new aws.ecs.TaskDefinition(
   'tesser-actuator',
   {
-    orgId,
-    cellUrl: `https://${ISSUER_HOST}`,
-    vpcId,
-    subnetIds: [subnet],
-    assignPublicIp: false,
-    box: { subnetId: subnet, securityGroupId: sg.id, image: { owner: imageOwner }, role: boxRoleName, instanceProfile: boxRoleName },
-    fleet: { imageOwner, hostRoleArn: hostRole.arn, instanceProfileArn: hostProfile.arn },
-    snapshotsBucket: snapshots.bucket,
-    parameterStore,
-    tags: {},
-    tagKeys,
-    limits: { maxInstances: 50, mutationsPerMinute: 300, launchesPerHour: 120 },
-    enableFederation: cfg.getBoolean('enableFederation') ?? false,
+    family: 'tesser-actuator',
+    requiresCompatibilities: ['FARGATE'],
+    networkMode: 'awsvpc',
+    cpu: '256',
+    memory: '512',
+    runtimePlatform: { cpuArchitecture: 'ARM64', operatingSystemFamily: 'LINUX' },
+    taskRoleArn: actuatorRole.arn,
+    executionRoleArn: actuatorExec.arn,
+    containerDefinitions: pulumi.jsonStringify([
+      {
+        name: 'actuator',
+        image: ACTUATOR_IMAGE,
+        essential: true,
+        readonlyRootFilesystem: true,
+        stopTimeout: 120,
+        environment: [
+          { name: 'ACTUATOR_CONFIG', value: actuatorConfig },
+          { name: 'AWS_REGION', value: region },
+        ],
+        logConfiguration: {
+          logDriver: 'awslogs',
+          options: { 'awslogs-group': actuatorLog.name, 'awslogs-region': region, 'awslogs-stream-prefix': 'actuator', mode: 'blocking' },
+        },
+      },
+    ]),
   },
-  provider
+  { provider }
+);
+const actuatorCluster = new aws.ecs.Cluster('tesser-actuator', { name: 'tesser-actuator' }, { provider });
+new aws.ecs.Service(
+  'tesser-actuator',
+  {
+    name: 'actuator',
+    cluster: actuatorCluster.arn,
+    taskDefinition: actuatorTask.arn,
+    desiredCount: 2,
+    launchType: 'FARGATE',
+    deploymentMinimumHealthyPercent: 100,
+    deploymentMaximumPercent: 200,
+    deploymentCircuitBreaker: { enable: true, rollback: true },
+    availabilityZoneRebalancing: 'ENABLED',
+    networkConfiguration: { subnets: [subnet], securityGroups: [actuatorSg.id], assignPublicIp: false },
+    waitForSteadyState: true,
+  },
+  { provider }
 );
 
 const ssh = boxSsh({ region, accountId, orgId });
@@ -329,7 +435,5 @@ export const instanceProfile = boxProfile.name;
 export const snapshotsBucket = snapshots.bucket;
 export const memberAccessPolicyArn = memberAccess.arn;
 export const hostRoleArn = hostRole.arn;
-export const actuatorRoleArn = actuator.roleArn;
-export const actuatorLogGroup = actuator.logGroupName;
 export const accessRoleArns = { githubActions: githubActionsRoleArn, cloudAgent: cloudAgentRoleArn, cursor: cursorRoleArn };
 export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''} --actuator tesser-actuator`;
