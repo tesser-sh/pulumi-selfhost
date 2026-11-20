@@ -9,7 +9,6 @@ import {
   fleetControlPolicy,
   fleetBoxTrustPolicy,
   fleetHostPolicy,
-  cloudActuatorRoleName,
   cloudBoxRoleName,
   cloudRoleName,
   parameterStorePolicies,
@@ -333,4 +332,4 @@ export const hostRoleArn = hostRole.arn;
 export const actuatorRoleArn = actuator.roleArn;
 export const actuatorLogGroup = actuator.logGroupName;
 export const accessRoleArns = { githubActions: githubActionsRoleArn, cloudAgent: cloudAgentRoleArn, cursor: cursorRoleArn };
-export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''} --actuator ${cloudActuatorRoleName(orgId)}`;
+export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''} --actuator tesser-actuator`;

@@ -6,10 +6,6 @@ export function cloudBoxRoleName(orgId: string): string {
   return `tesser-${orgId}-box`.slice(0, 64);
 }
 
-export function cloudActuatorRoleName(orgId: string): string {
-  return `tesser-${orgId}-actuator`.slice(0, 64);
-}
-
 export const RETAGGED_KEYS = ["tesser:org", "tesser:pool", "tesser:class", "tesser:service", "tesser:sha"];
 
 export const MOVE_TAG = "tesser:move";

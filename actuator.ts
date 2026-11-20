@@ -3,7 +3,6 @@ import * as pulumi from '@pulumi/pulumi';
 
 import {
   boxIdentityPolicy,
-  cloudActuatorRoleName,
   fleetControlPolicy,
   parameterStorePolicies,
   permissionsPolicy,
@@ -76,14 +75,14 @@ export function createActuator(name: string, args: ActuatorArgs, provider: aws.P
   const cellUrl = args.cellUrl ?? 'https://api.tesser.sh';
   const account = aws.getCallerIdentityOutput({}, { provider }).accountId;
   const region = aws.getRegionOutput({}, { provider }).region;
-  const roleName = cloudActuatorRoleName(args.orgId);
+  const roleName = 'tesser-actuator';
   const trust = pulumi.all([account, region]).apply(ecsTasksTrust);
 
   const federation = args.enableFederation ? [new aws.iam.OutboundWebIdentityFederation(name, {}, { provider, retainOnDelete: true })] : [];
 
   const log = new aws.cloudwatch.LogGroup(
     name,
-    { name: `/tesser/actuator/${args.orgId}`, retentionInDays: args.logRetentionDays ?? 365 },
+    { name: '/tesser/actuator', retentionInDays: args.logRetentionDays ?? 365 },
     { provider }
   );
 
@@ -137,7 +136,7 @@ export function createActuator(name: string, args: ActuatorArgs, provider: aws.P
 
   const execution = new aws.iam.Role(
     `${name}-execution`,
-    { name: `${roleName}-exec`.slice(0, 64), assumeRolePolicy: trust },
+    { name: `${roleName}-exec`, assumeRolePolicy: trust },
     { provider }
   );
   new aws.iam.RolePolicy(
