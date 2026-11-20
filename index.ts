@@ -2,7 +2,7 @@ import * as aws from '@pulumi/aws';
 import * as pulumi from '@pulumi/pulumi';
 
 import { boxSsh, oidcAccess, policyJson } from './access';
-import { TesserActuator } from './actuator';
+import { createActuator } from './actuator';
 import { createNetwork } from './network';
 import {
   boxIdentityPolicy,
@@ -276,7 +276,7 @@ if (parameterStore) {
 const actuatorImage = cfg.get('actuatorImage');
 const actuator =
   actuatorImage &&
-  new TesserActuator(
+  createActuator(
     'tesser-actuator',
     {
       orgId,
@@ -294,7 +294,7 @@ const actuator =
       limits: { maxInstances: 50, mutationsPerMinute: 300, launchesPerHour: 120 },
       enableFederation: cfg.getBoolean('enableFederation') ?? false,
     },
-    { providers: { aws: provider } }
+    provider
   );
 
 const ssh = boxSsh({ region, accountId, orgId });
