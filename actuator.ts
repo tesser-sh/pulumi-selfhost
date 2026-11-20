@@ -11,8 +11,7 @@ import {
   type PolicyDocument,
 } from './tesser-policy';
 
-const DIGEST_PINNED = /^[^@\s]+@sha256:[0-9a-f]{64}$/;
-const PRIVATE_ECR = /^(\d{12})\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com\/([^@:]+)@/;
+const IMAGE = 'public.ecr.aws/tesser/actuator@sha256:ee5095bf907eb3c267d2fe3de26c2ddd387303f83aded1b0375e5d636d5e00b6';
 const CONTAINER = 'actuator';
 const STOP_TIMEOUT_S = 120;
 const TASKS = 2;
@@ -27,7 +26,6 @@ export interface ActuatorLimits {
 
 export interface ActuatorArgs {
   orgId: string;
-  image: pulumi.Input<string>;
   cellUrl?: string;
   subnetIds: pulumi.Input<pulumi.Input<string>[]>;
   assignPublicIp: boolean;
@@ -78,10 +76,6 @@ export function createActuator(name: string, args: ActuatorArgs, provider: aws.P
   const cellUrl = args.cellUrl ?? 'https://api.tesser.sh';
   const account = aws.getCallerIdentityOutput({}, { provider }).accountId;
   const region = aws.getRegionOutput({}, { provider }).region;
-  const image = pulumi.output(args.image).apply((i) => {
-    if (!DIGEST_PINNED.test(i)) throw new Error(`the actuator image must be pinned by digest (<registry>/actuator@sha256:<64 hex>), not "${i}"`);
-    return i;
-  });
   const roleName = cloudActuatorRoleName(args.orgId);
   const trust = pulumi.all([account, region]).apply(ecsTasksTrust);
 
@@ -149,29 +143,13 @@ export function createActuator(name: string, args: ActuatorArgs, provider: aws.P
   new aws.iam.RolePolicy(
     `${name}-execution`,
     {
-      name: 'pull-and-log',
+      name: 'audit-log',
       role: execution.id,
       policy: pulumi.jsonStringify(
-        pulumi.all([image, log.arn]).apply(([i, logArn]) => {
-          const ecr = PRIVATE_ECR.exec(i);
-          return {
-            Version: '2012-10-17',
-            Statement: [
-              { Sid: 'WriteAuditLog', Effect: 'Allow', Action: ['logs:CreateLogStream', 'logs:PutLogEvents'], Resource: `${logArn}:log-stream:*` },
-              ...(ecr === null
-                ? []
-                : [
-                    { Sid: 'RegistryLogin', Effect: 'Allow', Action: 'ecr:GetAuthorizationToken', Resource: '*' },
-                    {
-                      Sid: 'PullImage',
-                      Effect: 'Allow',
-                      Action: ['ecr:BatchGetImage', 'ecr:GetDownloadUrlForLayer'],
-                      Resource: `arn:aws:ecr:${ecr[2]}:${ecr[1]}:repository/${ecr[3]}`,
-                    },
-                  ]),
-            ],
-          };
-        })
+        log.arn.apply((logArn) => ({
+          Version: '2012-10-17',
+          Statement: [{ Sid: 'WriteAuditLog', Effect: 'Allow', Action: ['logs:CreateLogStream', 'logs:PutLogEvents'], Resource: `${logArn}:log-stream:*` }],
+        }))
       ),
     },
     { provider }
@@ -226,7 +204,7 @@ export function createActuator(name: string, args: ActuatorArgs, provider: aws.P
       containerDefinitions: pulumi.jsonStringify([
         {
           name: CONTAINER,
-          image,
+          image: IMAGE,
           essential: true,
           readonlyRootFilesystem: true,
           stopTimeout: STOP_TIMEOUT_S,

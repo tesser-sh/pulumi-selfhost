@@ -273,29 +273,25 @@ if (parameterStore) {
   new aws.iam.RolePolicy('tesser-box-env', { role: boxRole.id, policy: env.apply((p) => JSON.stringify(p.box)) }, { provider });
 }
 
-const actuatorImage = cfg.get('actuatorImage');
-const actuator =
-  actuatorImage &&
-  createActuator(
-    'tesser-actuator',
-    {
-      orgId,
-      image: actuatorImage,
-      cellUrl: `https://${ISSUER_HOST}`,
-      vpcId,
-      subnetIds: [subnet],
-      assignPublicIp: false,
-      box: { subnetId: subnet, securityGroupId: sg.id, image: { owner: imageOwner }, role: boxRoleName, instanceProfile: boxRoleName },
-      fleet: { imageOwner, hostRoleArn: hostRole.arn, instanceProfileArn: hostProfile.arn },
-      snapshotsBucket: snapshots.bucket,
-      parameterStore,
-      tags: {},
-      tagKeys,
-      limits: { maxInstances: 50, mutationsPerMinute: 300, launchesPerHour: 120 },
-      enableFederation: cfg.getBoolean('enableFederation') ?? false,
-    },
-    provider
-  );
+const actuator = createActuator(
+  'tesser-actuator',
+  {
+    orgId,
+    cellUrl: `https://${ISSUER_HOST}`,
+    vpcId,
+    subnetIds: [subnet],
+    assignPublicIp: false,
+    box: { subnetId: subnet, securityGroupId: sg.id, image: { owner: imageOwner }, role: boxRoleName, instanceProfile: boxRoleName },
+    fleet: { imageOwner, hostRoleArn: hostRole.arn, instanceProfileArn: hostProfile.arn },
+    snapshotsBucket: snapshots.bucket,
+    parameterStore,
+    tags: {},
+    tagKeys,
+    limits: { maxInstances: 50, mutationsPerMinute: 300, launchesPerHour: 120 },
+    enableFederation: cfg.getBoolean('enableFederation') ?? false,
+  },
+  provider
+);
 
 const ssh = boxSsh({ region, accountId, orgId });
 const memberAccess = new aws.iam.Policy(
@@ -334,7 +330,7 @@ export const instanceProfile = boxProfile.name;
 export const snapshotsBucket = snapshots.bucket;
 export const memberAccessPolicyArn = memberAccess.arn;
 export const hostRoleArn = hostRole.arn;
-export const actuatorRoleArn = actuator && actuator.roleArn;
-export const actuatorLogGroup = actuator && actuator.logGroupName;
+export const actuatorRoleArn = actuator.roleArn;
+export const actuatorLogGroup = actuator.logGroupName;
 export const accessRoleArns = { githubActions: githubActionsRoleArn, cloudAgent: cloudAgentRoleArn, cursor: cursorRoleArn };
-export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''}${actuator ? ` --actuator ${cloudActuatorRoleName(orgId)}` : ''}`;
+export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''} --actuator ${cloudActuatorRoleName(orgId)}`;
