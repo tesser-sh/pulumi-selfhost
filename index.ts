@@ -436,4 +436,4 @@ export const snapshotsBucket = snapshots.bucket;
 export const memberAccessPolicyArn = memberAccess.arn;
 export const hostRoleArn = hostRole.arn;
 export const accessRoleArns = { githubActions: githubActionsRoleArn, cloudAgent: cloudAgentRoleArn, cursor: cursorRoleArn };
-export const connect = pulumi.interpolate`tesser cloud connect --role ${role.arn} --subnet ${subnet} --sg ${sg.id} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''} --actuator tesser-actuator`;
+export const connect = pulumi.interpolate`tesser cloud connect --role ${role.arn} --subnet ${subnet} --sg ${sg.id} --instance-profile ${boxRoleName} --region ${region} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''} --actuator tesser-actuator`;
