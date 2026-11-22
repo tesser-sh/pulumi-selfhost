@@ -259,6 +259,8 @@ export function fleetHostPolicy(t: { cellUrl: string; bucket: string; region: st
       { Sid: "BoxRole", Effect: "Allow", Action: ["sts:AssumeRole", "sts:TagSession"], Resource: `arn:aws:iam::${t.accountId}:role/${t.boxRole}` },
       { Sid: "SleepingBoxes", Effect: "Allow", Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"], Resource: `arn:aws:s3:::${t.bucket}/vms/*` },
       { Sid: "ListSleepingBoxes", Effect: "Allow", Action: "s3:ListBucket", Resource: `arn:aws:s3:::${t.bucket}`, Condition: { StringLike: { "s3:prefix": "vms/*" } } },
+      { Sid: "Templates", Effect: "Allow", Action: ["s3:GetObject", "s3:PutObject"], Resource: `arn:aws:s3:::${t.bucket}/template/*` },
+      { Sid: "ListTemplates", Effect: "Allow", Action: "s3:ListBucket", Resource: `arn:aws:s3:::${t.bucket}`, Condition: { StringLike: { "s3:prefix": "template/*" } } },
       ...(t.kmsKey === null
         ? []
         : [{ Sid: "SleepingBoxesKey", Effect: "Allow" as const, Action: ["kms:GenerateDataKey", "kms:Decrypt"], Resource: t.kmsKey, Condition: { StringEquals: { "kms:ViaService": `s3.${t.region}.amazonaws.com` } } }]),
