@@ -1,6 +1,6 @@
 # pulumi-selfhost
 
-The Pulumi stack a tesser self-host customer deploys into their own AWS account. IAM in `tesser-policy.ts` is a copy of `protocol/src/cloud.ts`, which `tesser cloud check` checks against.
+The Pulumi stack a tesser self-host customer deploys into their own AWS account. This repo is the only copy of the self-host setup; `tesser cloud check` dry-runs its IAM at connect.
 
 One region: a VPC with one private box subnet, NAT and an S3 endpoint; the box security group (self only: TCP 14650-14655, TCP 22000-23999, UDP 51820); box and fleet host roles; the snapshots bucket; `tesser-member-access` for Session Manager ssh. Optional: `parameterStore`, and CI/cloud-agent roles via `oidcAccess`.
 
