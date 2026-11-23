@@ -1,7 +1,3 @@
-export function cloudRoleName(orgId: string): string {
-  return `tesser-${orgId}`.slice(0, 64);
-}
-
 export function cloudBoxRoleName(orgId: string): string {
   return `tesser-${orgId}-box`.slice(0, 64);
 }
@@ -20,26 +16,6 @@ type Statement = { Sid: string; Effect: "Allow"; Action: string | string[]; Reso
 export interface PolicyDocument {
   Version: "2012-10-17";
   Statement: Statement[];
-}
-
-export interface TrustPolicyDocument {
-  Version: "2012-10-17";
-  Statement: { Sid: string; Effect: "Allow"; Principal: { Federated: string }; Action: string; Condition: Record<string, Record<string, string>> }[];
-}
-
-export function trustPolicy(issuerHost: string, accountId: string, orgId: string): TrustPolicyDocument {
-  return {
-    Version: "2012-10-17",
-    Statement: [
-      {
-        Sid: "TesserOrg",
-        Effect: "Allow",
-        Principal: { Federated: `arn:aws:iam::${accountId}:oidc-provider/${issuerHost}` },
-        Action: "sts:AssumeRoleWithWebIdentity",
-        Condition: { StringEquals: { [`${issuerHost}:aud`]: "sts.amazonaws.com", [`${issuerHost}:sub`]: `org:${orgId}` } },
-      },
-    ],
-  };
 }
 
 export interface PermissionsTarget {
