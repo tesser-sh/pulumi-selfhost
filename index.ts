@@ -18,7 +18,7 @@ import {
 } from './tesser-policy';
 
 const ISSUER_HOST = 'api.tesser.sh';
-const ACTUATOR_IMAGE = 'public.ecr.aws/tesser/actuator@sha256:2e67237751992745d9b08c8c37c35e211d7ad5456cd38228c3d7fd1e0c8707b5';
+const ACTUATOR_IMAGE = 'public.ecr.aws/tesser/actuator@sha256:0f6bd2ddbb28206bb2abd485566b2b0cc8e6e4caef95d8d2ccf7280091c1314a';
 const MESH_PORT = 14650;
 const LAST_MOVE_PORT = 14655;
 const HOST_MESH_PORTS = { from: 22000, to: 23999 };
