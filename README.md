@@ -4,12 +4,14 @@ The Pulumi stack a tesser self-host customer deploys into their own AWS account.
 
 One region: a VPC with one private box subnet, NAT and an S3 endpoint; the box security group (self only: TCP 14650-14655, TCP 22000-23999, UDP 51820); box and fleet host roles; the snapshots bucket; `tesser-member-access` for Session Manager ssh. Optional: `parameterStore`, and CI/cloud-agent roles via `oidcAccess`.
 
-Every stack runs tesser's actuator: two Fargate ARM64 tasks that dial out to tesser and make its AWS calls as `tesser-actuator`, which can't touch its audit log `/tesser/actuator`. The image is pinned by digest in `index.ts`.
+Every stack runs tesser's actuator: one Fargate ARM64 task that dials out to tesser and makes its AWS calls as `tesser-actuator`, which can't touch its audit log `/tesser/actuator`. The image is pinned by digest in `index.ts`.
 
 ```sh
 pulumi config set tesser:orgId <org id> && pulumi config set aws:region <region> && pulumi up
 # then run the `connect` output (tesser cloud connect ...)
 ```
+
+An org that is already connected adds only the actuator part of `index.ts`, then runs `tesser cloud connect --actuator tesser-actuator`. Every other setting stays. Leave out `--account`: it swaps in the default role name, which connect refuses while the fleet holds boxes.
 
 ## Testing ground
 
