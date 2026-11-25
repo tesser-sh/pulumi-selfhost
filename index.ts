@@ -23,7 +23,7 @@ const MESH_PORT = 14650;
 const LAST_MOVE_PORT = 14655;
 const HOST_MESH_PORTS = { from: 22000, to: 23999 };
 const WG_PORT = 51820;
-const ZONES: Record<string, string> = { 'us-east-1': 'use1-az1', 'us-west-2': 'usw2-az1' };
+const ZONES: Record<string, string[]> = { 'us-east-1': ['use1-az1', 'use1-az2', 'use1-az4'], 'us-west-2': ['usw2-az1', 'usw2-az2', 'usw2-az3'] };
 
 const cfg = new pulumi.Config();
 const orgId = cfg.require('orgId');
@@ -43,15 +43,10 @@ const provider = new aws.Provider(
 );
 const accountId = aws.getCallerIdentityOutput({}, { provider }).accountId;
 
-const { vpcId, subnetId: subnet } = createNetwork(
-  {
-    orgId,
-    region,
-    cidr: cfg.get('cidr') ?? '10.73.0.0/16',
-    azId: cfg.get('azId') ?? ZONES[region] ?? `${region}-az1`,
-  },
-  provider
-);
+if (cfg.get('azId') !== undefined) throw new Error('tesser:azId is now tesser:azIds, a list; put your azId first so its subnet stays');
+const azIds = cfg.getObject<string[]>('azIds') ?? ZONES[region];
+if (azIds === undefined) throw new Error(`set tesser:azIds to ${region}'s zone ids (pulumi config set --path 'tesser:azIds[0]' <id>), e.g. from aws ec2 describe-availability-zones`);
+const { vpcId, subnetIds } = createNetwork({ orgId, region, cidr: cfg.get('cidr') ?? '10.73.0.0/16', azIds }, provider);
 
 const sg = new aws.ec2.SecurityGroup(
   'tesser',
@@ -195,7 +190,7 @@ const boxProfile = new aws.iam.InstanceProfile(
   { provider }
 );
 
-const boxesPolicy = pulumi.all([accountId, subnet, sg.id]).apply(([a, subnetId, group]) =>
+const boxesPolicy = pulumi.all([accountId, pulumi.all(subnetIds), sg.id]).apply(([a, subnets, group]) =>
       JSON.stringify(
         permissionsPolicy({
           region,
@@ -204,7 +199,7 @@ const boxesPolicy = pulumi.all([accountId, subnet, sg.id]).apply(([a, subnetId, 
           boxRole: boxRoleName,
           image: { owner: imageOwner },
           tagKeys,
-          subnetId,
+          subnetIds: subnets,
           securityGroupId: group,
         })
       )
@@ -319,7 +314,7 @@ const actuatorConfig = pulumi.jsonStringify({
   accountId,
   region,
   vpcId,
-  subnetIds: [subnet],
+  subnetIds,
   securityGroupId: sg.id,
   box: { image: { owner: imageOwner }, instanceProfile: boxRoleName },
   fleet: { image: { owner: imageOwner }, instanceProfileArn: hostProfile.arn },
@@ -371,7 +366,7 @@ new aws.ecs.Service(
     deploymentMinimumHealthyPercent: 100,
     deploymentMaximumPercent: 200,
     deploymentCircuitBreaker: { enable: true, rollback: true },
-    networkConfiguration: { subnets: [subnet], securityGroups: [actuatorSg.id], assignPublicIp: false },
+    networkConfiguration: { subnets: subnetIds, securityGroups: [actuatorSg.id], assignPublicIp: false },
     waitForSteadyState: true,
   },
   { provider }
@@ -408,11 +403,11 @@ const cursorRoleArn =
   oidcAccess('cursor', { issuerUrl: 'https://api.cursor.com', audience: 'sts.amazonaws.com', subjects: [`team_id:${cursorTeamId}`] }, { provider, statements: ssh });
 
 export { accountId };
-export const subnetId = subnet;
+export { subnetIds };
 export const securityGroupId = sg.id;
 export const instanceProfile = boxProfile.name;
 export const snapshotsBucket = snapshots.bucket;
 export const memberAccessPolicyArn = memberAccess.arn;
 export const hostRoleArn = hostRole.arn;
 export const accessRoleArns = { githubActions: githubActionsRoleArn, cloudAgent: cloudAgentRoleArn, cursor: cursorRoleArn };
-export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --actuator ${actuatorRole.name} --region ${region} --subnet ${subnet} --sg ${sg.id} --instance-profile ${boxRoleName} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''}`;
+export const connect = pulumi.interpolate`tesser cloud connect --account ${accountId} --actuator ${actuatorRole.name} --region ${region} --subnet ${subnetIds[0]} --sg ${sg.id} --instance-profile ${boxRoleName} --private --snapshots-bucket ${snapshots.bucket} --fleet ${hostRole.arn} --fleet-box-role ${boxRoleName}${parameterStore ? ' --env parameter-store' : ''}`;

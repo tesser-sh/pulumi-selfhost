@@ -2,7 +2,7 @@
 
 The Pulumi stack a tesser self-host customer deploys into their own AWS account. This repo is the only copy of the self-host setup; `tesser cloud check` dry-runs its IAM at connect.
 
-One region: a VPC with one private box subnet, NAT and an S3 endpoint; the box security group (self only: TCP 14650-14655, TCP 22000-23999, UDP 51820); box and fleet host roles; the snapshots bucket; `tesser-member-access` for Session Manager ssh. Optional: `parameterStore`, and CI/cloud-agent roles via `oidcAccess`.
+One region: a VPC with a private box subnet in each of `azIds` (default 3 zones in us-west-2 and us-east-1, the first is home), one NAT and an S3 endpoint; the box security group (self only: TCP 14650-14655, TCP 22000-23999, UDP 51820); box and fleet host roles; the snapshots bucket; `tesser-member-access` for Session Manager ssh. Optional: `parameterStore`, and CI/cloud-agent roles via `oidcAccess`.
 
 Every stack runs tesser's actuator: one Fargate ARM64 task that dials out to tesser and makes its AWS calls as `tesser-actuator`, which can't touch its audit log `/tesser/actuator`. The image is pinned by digest in `index.ts`; its source is [tesser-sh/actuator](https://github.com/tesser-sh/actuator), and `gh attestation verify oci://public.ecr.aws/tesser/actuator@<digest> -R tesser-sh/actuator` checks the image was built from it.
 
@@ -10,6 +10,8 @@ Every stack runs tesser's actuator: one Fargate ARM64 task that dials out to tes
 pulumi config set tesser:orgId <org id> && pulumi config set aws:region <region> && pulumi up
 # then run the `connect` output (tesser cloud connect ...)
 ```
+
+When AWS runs out of fleet hosts in one zone, the fleet launches in the next, and boxes follow it. `azIds` is append-only: a zone's subnet CIDR comes from its place in the list. The box subnets share one NAT in the home zone, since a zone runs out of capacity far more often than it goes down, and a NAT per zone costs ~$33/month each.
 
 An org that is already connected adds only the actuator part of `index.ts`, then runs `tesser cloud connect --actuator tesser-actuator`. Every other setting stays. Leave out `--account`: it swaps in the default role name, which connect refuses while the fleet holds boxes.
 
