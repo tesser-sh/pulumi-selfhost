@@ -2,7 +2,7 @@ import * as aws from '@pulumi/aws';
 import * as pulumi from '@pulumi/pulumi';
 
 export function createNetwork(
-  opts: { orgId: string; region: string; cidr: string; azId: string },
+  opts: { orgId: string; region: string; cidr: string; azIds: [string, ...string[]] },
   provider: aws.Provider
 ) {
   const [a, b] = opts.cidr.split('.');
@@ -18,7 +18,7 @@ export function createNetwork(
     {
       vpcId: vpc.id,
       cidrBlock: `${a}.${b}.0.0/24`,
-      availabilityZoneId: opts.azId,
+      availabilityZoneId: opts.azIds[0],
       tags: { Name: 'tesser-public' },
     },
     { provider }
@@ -39,17 +39,21 @@ export function createNetwork(
     { subnetId: publicSubnet.id, allocationId: natIp.id, tags: tags('nat') },
     { provider, dependsOn: igw }
   );
-  const subnet = new aws.ec2.Subnet(
-    'tesser-boxes',
-    { vpcId: vpc.id, cidrBlock: `${a}.${b}.16.0/20`, availabilityZoneId: opts.azId, tags: tags('boxes') },
-    { provider }
-  );
   const routes = new aws.ec2.RouteTable(
     'tesser-boxes',
     { vpcId: vpc.id, routes: [{ cidrBlock: '0.0.0.0/0', natGatewayId: nat.id }], tags: tags('boxes') },
     { provider }
   );
-  new aws.ec2.RouteTableAssociation('tesser-boxes', { subnetId: subnet.id, routeTableId: routes.id }, { provider });
+  const subnets = opts.azIds.map((azId, i) => {
+    const name = i === 0 ? 'tesser-boxes' : `tesser-boxes-${azId}`;
+    const subnet = new aws.ec2.Subnet(
+      name,
+      { vpcId: vpc.id, cidrBlock: `${a}.${b}.${16 * (i + 1)}.0/20`, availabilityZoneId: azId, tags: { ...tags('boxes'), Name: name } },
+      { provider }
+    );
+    new aws.ec2.RouteTableAssociation(name, { subnetId: subnet.id, routeTableId: routes.id }, { provider });
+    return subnet.id;
+  });
   new aws.ec2.VpcEndpoint(
     'tesser-s3',
     {
@@ -61,5 +65,5 @@ export function createNetwork(
     },
     { provider }
   );
-  return { vpcId: vpc.id, subnetId: subnet.id };
+  return { vpcId: vpc.id, subnetIds: subnets };
 }

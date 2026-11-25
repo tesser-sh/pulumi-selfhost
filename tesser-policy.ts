@@ -25,7 +25,7 @@ export interface PermissionsTarget {
   boxRole: string;
   image: { id: string } | { owner: string };
   tagKeys: string[];
-  subnetId?: string;
+  subnetIds?: string[];
   securityGroupId?: string;
 }
 
@@ -70,7 +70,7 @@ export function permissionsPolicy(t: PermissionsTarget): PolicyDocument {
         Effect: "Allow",
         Action: "ec2:RunInstances",
         Resource: [
-          ec2(`subnet/${t.subnetId ?? "*"}`),
+          ...(t.subnetIds ?? ["*"]).map((id) => ec2(`subnet/${id}`)),
           ec2(`security-group/${t.securityGroupId ?? "*"}`),
           ec2("network-interface/*"),
         ],

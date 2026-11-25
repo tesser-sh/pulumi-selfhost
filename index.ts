@@ -23,7 +23,10 @@ const MESH_PORT = 14650;
 const LAST_MOVE_PORT = 14655;
 const HOST_MESH_PORTS = { from: 22000, to: 23999 };
 const WG_PORT = 51820;
-const ZONES: Record<string, string> = { 'us-east-1': 'use1-az1', 'us-west-2': 'usw2-az1' };
+const ZONES: Record<string, string[]> = {
+  'us-east-1': ['use1-az1', 'use1-az2', 'use1-az4', 'use1-az5', 'use1-az6'],
+  'us-west-2': ['usw2-az1', 'usw2-az2', 'usw2-az3', 'usw2-az4'],
+};
 
 const cfg = new pulumi.Config();
 const orgId = cfg.require('orgId');
@@ -43,15 +46,13 @@ const provider = new aws.Provider(
 );
 const accountId = aws.getCallerIdentityOutput({}, { provider }).accountId;
 
-const { vpcId, subnetId: subnet } = createNetwork(
-  {
-    orgId,
-    region,
-    cidr: cfg.get('cidr') ?? '10.73.0.0/16',
-    azId: cfg.get('azId') ?? ZONES[region] ?? `${region}-az1`,
-  },
+const zones = ZONES[region] ?? [`${region}-az1`];
+const primaryZone = cfg.get('azId') ?? zones[0];
+const { vpcId, subnetIds } = createNetwork(
+  { orgId, region, cidr: cfg.get('cidr') ?? '10.73.0.0/16', azIds: [primaryZone, ...zones.filter((z) => z !== primaryZone)] },
   provider
 );
+const subnet = subnetIds[0];
 
 const sg = new aws.ec2.SecurityGroup(
   'tesser',
@@ -195,7 +196,7 @@ const boxProfile = new aws.iam.InstanceProfile(
   { provider }
 );
 
-const boxesPolicy = pulumi.all([accountId, subnet, sg.id]).apply(([a, subnetId, group]) =>
+const boxesPolicy = pulumi.all([accountId, pulumi.all(subnetIds), sg.id]).apply(([a, subnets, group]) =>
       JSON.stringify(
         permissionsPolicy({
           region,
@@ -204,7 +205,7 @@ const boxesPolicy = pulumi.all([accountId, subnet, sg.id]).apply(([a, subnetId, 
           boxRole: boxRoleName,
           image: { owner: imageOwner },
           tagKeys,
-          subnetId,
+          subnetIds: subnets,
           securityGroupId: group,
         })
       )
@@ -319,7 +320,7 @@ const actuatorConfig = pulumi.jsonStringify({
   accountId,
   region,
   vpcId,
-  subnetIds: [subnet],
+  subnetIds,
   securityGroupId: sg.id,
   box: { image: { owner: imageOwner }, instanceProfile: boxRoleName },
   fleet: { image: { owner: imageOwner }, instanceProfileArn: hostProfile.arn },
